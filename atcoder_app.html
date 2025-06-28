@@ -1,0 +1,385 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AtCoder Problem Manager</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Noto+Sans+JP:wght@400;500;700&display=swap" rel="stylesheet">
+    <style>
+        body { font-family: 'Inter', 'Noto Sans JP', sans-serif; background-color: #111827; }
+        .problem-title.solved { text-decoration: line-through; color: #6b7280; }
+        .problem-card { cursor: pointer; }
+        .checkmark-icon { color: #22c55e; width: 1.25rem; height: 1.25rem; flex-shrink: 0; cursor: pointer; transition: transform 0.1s ease-in-out; }
+        .checkmark-icon:hover { transform: scale(1.2); }
+        .hidden { display: none; }
+    </style>
+</head>
+<body class="text-gray-100 antialiased">
+
+    <div id="auth-container" class="container mx-auto p-4 md:p-8 max-w-md">
+        <div class="bg-gray-800 p-8 rounded-lg shadow-lg">
+            <h2 id="auth-title" class="text-2xl font-bold text-center text-sky-300 mb-6">ログイン</h2>
+            <div id="auth-error" class="bg-red-900/50 text-red-300 p-3 rounded-md mb-4 text-sm hidden"></div>
+            <form id="login-form">
+                <input type="email" id="login-email" placeholder="メールアドレス" class="w-full bg-gray-700 p-3 rounded-md mb-4 border border-gray-600 focus:ring-sky-500 focus:border-sky-500" required>
+                <input type="password" id="login-password" placeholder="パスワード" class="w-full bg-gray-700 p-3 rounded-md mb-4 border border-gray-600 focus:ring-sky-500 focus:border-sky-500" required>
+                <button type="submit" class="w-full bg-sky-600 hover:bg-sky-500 text-white font-bold py-3 rounded-md transition duration-200">ログイン</button>
+            </form>
+            <form id="register-form" class="hidden">
+                <input type="email" id="register-email" placeholder="メールアドレス" class="w-full bg-gray-700 p-3 rounded-md mb-4 border border-gray-600 focus:ring-sky-500 focus:border-sky-500" required>
+                <input type="password" id="register-password" placeholder="パスワード (6文字以上)" class="w-full bg-gray-700 p-3 rounded-md mb-4 border border-gray-600 focus:ring-sky-500 focus:border-sky-500" required>
+                <button type="submit" class="w-full bg-teal-600 hover:bg-teal-500 text-white font-bold py-3 rounded-md transition duration-200">登録する</button>
+            </form>
+            <p class="text-center text-sm text-gray-400 mt-6">
+                <span id="auth-switch-text">アカウントをお持ちでないですか？</span>
+                <a href="#" id="auth-switch-link" class="font-medium text-sky-400 hover:text-sky-300">新規登録</a>
+            </p>
+        </div>
+    </div>
+    
+    <div id="app-container" class="container mx-auto p-4 md:p-8 max-w-4xl hidden">
+        <header class="flex justify-between items-center mb-8">
+            <div>
+                <h1 class="text-4xl font-bold text-transparent bg-clip-text bg-gradient-to-r from-sky-400 to-cyan-300">AtCoder PM</h1>
+                <p id="user-email" class="text-gray-400 mt-2 text-sm"></p>
+            </div>
+            <button id="logout-button" class="bg-gray-700 hover:bg-gray-600 text-white font-bold py-2 px-4 rounded-md transition duration-200">ログアウト</button>
+        </header>
+
+        <div class="bg-gray-800/50 backdrop-blur-sm p-4 rounded-lg mb-8 flex flex-col sm:flex-row gap-4 sticky top-4 z-10 border border-gray-700">
+            <div class="flex-1">
+                <label for="contest-filter" class="block text-sm font-medium text-gray-400 mb-1">コンテスト</label>
+                <select id="contest-filter" class="w-full bg-gray-700 border-gray-600 rounded-md shadow-sm focus:ring-sky-500 focus:border-sky-500 text-white"></select>
+            </div>
+            <div class="flex-1">
+                <label for="difficulty-filter" class="block text-sm font-medium text-gray-400 mb-1">難易度</label>
+                <select id="difficulty-filter" class="w-full bg-gray-700 border-gray-600 rounded-md shadow-sm focus:ring-sky-500 focus:border-sky-500 text-white"></select>
+            </div>
+            <div class="flex-1">
+                <label for="solved-filter" class="block text-sm font-medium text-gray-400 mb-1">解答状況</label>
+                <select id="solved-filter" class="w-full bg-gray-700 border-gray-600 rounded-md shadow-sm focus:ring-sky-500 focus:border-sky-500 text-white">
+                    <option value="">すべて</option>
+                    <option value="solved">解答済み (1回以上)</option>
+                    <option value="unsolved">未解答</option>
+                </select>
+            </div>
+        </div>
+
+        <div id="problem-list" class="space-y-3"></div>
+        <div id="loading-state" class="text-center py-12">
+            <p class="text-gray-500">データを読み込み中...</p>
+        </div>
+    </div>
+
+    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-auth.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-firestore.js"></script>
+
+    <script>
+        // ★★★あなたのFirebaseプロジェクトの接続情報をここに設定しました★★★
+        const firebaseConfig = {
+            apiKey: "AIzaSyCWMpaHUaWbdDEZgT4soz0UER2hNFDTSUk",
+            authDomain: "atcoder-app-65e12.firebaseapp.com",
+            projectId: "atcoder-app-65e12",
+            storageBucket: "atcoder-app-65e12.appspot.com",
+            messagingSenderId: "416204271145",
+            appId: "1:416204271145:web:bf743d1b096b635c17f638",
+            measurementId: "G-0TRWSGZMRB"
+        };
+        // ★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★
+
+        // Firebaseの初期化
+        firebase.initializeApp(firebaseConfig);
+        const auth = firebase.auth();
+        const db = firebase.firestore();
+
+        // --- DOM要素の取得 ---
+        const authContainer = document.getElementById('auth-container');
+        const appContainer = document.getElementById('app-container');
+        const userEmailDisplay = document.getElementById('user-email');
+        const logoutButton = document.getElementById('logout-button');
+        const loginForm = document.getElementById('login-form');
+        const registerForm = document.getElementById('register-form');
+        const authSwitchLink = document.getElementById('auth-switch-link');
+        const authTitle = document.getElementById('auth-title');
+        const authSwitchText = document.getElementById('auth-switch-text');
+        const authError = document.getElementById('auth-error');
+
+        const problemList = document.getElementById('problem-list');
+        const loadingState = document.getElementById('loading-state');
+        const contestFilter = document.getElementById('contest-filter');
+        const difficultyFilter = document.getElementById('difficulty-filter');
+        const solvedFilter = document.getElementById('solved-filter');
+        
+        // --- グローバル変数 ---
+        const CSV_URL = 'https://raw.githubusercontent.com/Haruki-Hiranaka/atcoder_app/main/atcoder_problems.csv';
+        const MAX_CHECKS = 10;
+        let allProblems = [];
+        let solvedCounts = {}; 
+        let currentUser = null;
+        let userDocRef = null;
+
+        // --- 認証状態の監視 ---
+        auth.onAuthStateChanged(async user => {
+            if (user) {
+                currentUser = user;
+                userDocRef = db.collection('userProgress').doc(currentUser.uid);
+                authContainer.classList.add('hidden');
+                appContainer.classList.remove('hidden');
+                userEmailDisplay.textContent = `ログイン中: ${currentUser.email}`;
+                await initializeAppData();
+            } else {
+                currentUser = null;
+                userDocRef = null;
+                authContainer.classList.remove('hidden');
+                appContainer.classList.add('hidden');
+                // ログアウト時にフィルターのイベントリスナーをリセット
+                contestFilter.removeEventListener('change', applyFilters);
+                difficultyFilter.removeEventListener('change', applyFilters);
+                solvedFilter.removeEventListener('change', applyFilters);
+            }
+        });
+
+        async function initializeAppData() {
+            loadingState.style.display = 'block';
+            problemList.innerHTML = '';
+            
+            // フィルターのイベントリスナーを初期化
+            contestFilter.addEventListener('change', applyFilters);
+            difficultyFilter.addEventListener('change', applyFilters);
+            solvedFilter.addEventListener('change', applyFilters);
+            
+            await loadSolvedProblemsFromFirestore();
+            try {
+                const data = await fetchAndParseCSV(CSV_URL);
+                allProblems = data;
+                populateFilters(allProblems);
+                applyFilters();
+                loadingState.style.display = 'none';
+            } catch (error) {
+                console.error('データの取得に失敗しました:', error);
+                loadingState.innerHTML = `<div class="bg-red-900/50 text-red-300 p-4 rounded-lg text-center">問題データの読み込みに失敗しました。</div>`;
+            }
+        }
+        
+        // --- 認証関連のイベントリスナー ---
+        loginForm.addEventListener('submit', async e => {
+            e.preventDefault();
+            const email = document.getElementById('login-email').value;
+            const password = document.getElementById('login-password').value;
+            try {
+                await auth.signInWithEmailAndPassword(email, password);
+                authError.classList.add('hidden');
+            } catch (error) {
+                showAuthError("ログインに失敗しました。メールアドレスまたはパスワードが間違っています。");
+            }
+        });
+
+        registerForm.addEventListener('submit', async e => {
+            e.preventDefault();
+            const email = document.getElementById('register-email').value;
+            const password = document.getElementById('register-password').value;
+            try {
+                await auth.createUserWithEmailAndPassword(email, password);
+                authError.classList.add('hidden');
+            } catch (error) {
+                showAuthError("登録に失敗しました。" + error.message);
+            }
+        });
+
+        logoutButton.addEventListener('click', () => {
+            auth.signOut();
+        });
+
+        authSwitchLink.addEventListener('click', e => {
+            e.preventDefault();
+            loginForm.classList.toggle('hidden');
+            registerForm.classList.toggle('hidden');
+            authError.classList.add('hidden');
+            if (loginForm.classList.contains('hidden')) {
+                authTitle.textContent = '新規登録';
+                authSwitchText.textContent = 'アカウントをお持ちですか？';
+                authSwitchLink.textContent = 'ログイン';
+            } else {
+                authTitle.textContent = 'ログイン';
+                authSwitchText.textContent = 'アカウントをお持ちでないですか？';
+                authSwitchLink.textContent = '新規登録';
+            }
+        });
+
+        function showAuthError(message) {
+            authError.textContent = message;
+            authError.classList.remove('hidden');
+        }
+        
+        // --- アプリ本体のロジック (Firestore連携版) ---
+        async function loadSolvedProblemsFromFirestore() {
+            if (!userDocRef) return;
+            try {
+                const doc = await userDocRef.get();
+                if (doc.exists) {
+                    solvedCounts = doc.data().counts || {};
+                } else {
+                    solvedCounts = {};
+                }
+            } catch (error) {
+                console.error("Firestoreからのデータ読み込みに失敗:", error);
+                solvedCounts = {};
+            }
+        }
+
+        async function saveSolvedProblemsToFirestore() {
+            if (!userDocRef) return;
+            try {
+                // debounceなどを使った方が良いが、今回はシンプルに即時保存
+                await userDocRef.set({ counts: solvedCounts }, { merge: true });
+            } catch (error) {
+                console.error("Firestoreへのデータ書き込みに失敗:", error);
+            }
+        }
+
+        function handleProblemClick(event) {
+            const problemCard = event.target.closest('.problem-card');
+            if (!problemCard) return;
+
+            // 問題名自体のリンククリックでは反応しないようにする
+            if (event.target.closest('.problem-title-link')) {
+                 return;
+            }
+
+            const id = problemCard.dataset.id;
+            const checkmark = event.target.closest('.checkmark-icon');
+
+            if (checkmark) {
+                solvedCounts[id] = (solvedCounts[id] || 1) - 1;
+                if (solvedCounts[id] <= 0) {
+                    delete solvedCounts[id];
+                }
+            } else {
+                solvedCounts[id] = (solvedCounts[id] || 0) + 1;
+                if (solvedCounts[id] > MAX_CHECKS) {
+                    solvedCounts[id] = MAX_CHECKS;
+                }
+            }
+            
+            saveSolvedProblemsToFirestore(); 
+            updateProblemUI(id);
+
+            const selectedSolved = solvedFilter.value;
+            if ((selectedSolved === 'solved' && !(solvedCounts[id] > 0)) || (selectedSolved === 'unsolved' && (solvedCounts[id] > 0))) {
+                problemCard.style.display = 'none'; 
+            }
+        }
+
+        function updateProblemUI(id) {
+            const card = document.querySelector(`.problem-card[data-id="${id}"]`);
+            if (!card) return;
+
+            const count = solvedCounts[id] || 0;
+            const title = card.querySelector('.problem-title');
+            const checkmarkContainer = card.querySelector('.checkmark-container');
+
+            title.classList.toggle('solved', count > 0);
+            checkmarkContainer.innerHTML = generateCheckmarks(count);
+        }
+
+        function generateCheckmarks(count) {
+            let marks = '';
+            for (let i = 0; i < count; i++) {
+                marks += `<svg class="checkmark-icon" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M16.704 4.153a.75.75 0 01.143 1.052l-8 10.5a.75.75 0 01-1.127.075l-4.5-4.5a.75.75 0 011.06-1.06l3.894 3.893 7.48-9.817a.75.75 0 011.052-.143z" clip-rule="evenodd" /></svg>`;
+            }
+            return marks;
+        }
+        
+        function applyFilters() {
+            const selectedContest = contestFilter.value;
+            const selectedDifficulty = difficultyFilter.value;
+            const selectedSolved = solvedFilter.value;
+            
+            let filtered = allProblems;
+            
+            if (selectedContest) filtered = filtered.filter(p => p.contest_type === selectedContest);
+            if (selectedDifficulty) filtered = filtered.filter(p => p.problem_index === selectedDifficulty);
+            
+            if (selectedSolved === 'solved') {
+                filtered = filtered.filter(p => (solvedCounts[p.task_screen_name] || 0) > 0);
+            } else if (selectedSolved === 'unsolved') {
+                filtered = filtered.filter(p => !(solvedCounts[p.task_screen_name] || 0) > 0);
+            }
+            
+            renderProblems(filtered);
+        }
+
+        // ▼▼▼【修正点】ご提示いただいたコードをベースにしたCSV解析関数 ▼▼▼
+        async function fetchAndParseCSV(url) {
+            const response = await fetch(url);
+            if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
+            const csvText = await response.text();
+            
+            const lines = csvText.trim().split(/\r?\n/);
+            const header = lines[0].split(',').map(h => h.trim());
+            
+            return lines.slice(1).map(line => {
+                if (!line) return null; // 空行をスキップ
+                const values = line.split(',').map(v => v.trim());
+                return header.reduce((obj, key, i) => {
+                    obj[key] = values[i] || ''; 
+                    return obj;
+                }, {});
+            }).filter(Boolean); // nullになった要素を削除
+        }
+        // ▲▲▲ ▲▲▲ ▲▲▲
+
+        function populateFilters(problems) {
+            contestFilter.innerHTML = '<option value="">すべて</option>';
+            difficultyFilter.innerHTML = '<option value="">すべて</option>';
+            
+            const contests = [...new Set(problems.map(p => p.contest_type))].sort();
+            const difficulties = [...new Set(problems.map(p => p.problem_index))].sort((a,b) => a.localeCompare(b));
+            
+            contests.forEach(c => contestFilter.add(new Option(c, c)));
+            difficulties.forEach(d => difficultyFilter.add(new Option(d, d)));
+        }
+        
+        function renderProblems(problems) {
+            problemList.innerHTML = ''; // 一旦クリア
+            problemList.removeEventListener('click', handleProblemClick); // 古いリスナーを削除
+
+            if (problems.length === 0) {
+                problemList.innerHTML = '<div class="text-center text-gray-500 py-10">該当する問題がありません。</div>';
+                return;
+            }
+
+            const fragment = document.createDocumentFragment();
+            problems.forEach(p => {
+                if (!p || !p.task_screen_name) return; // 不正なデータをスキップ
+
+                const count = solvedCounts[p.task_screen_name] || 0;
+                const card = document.createElement('div');
+                card.className = 'problem-card bg-gray-900/50 border border-gray-700 rounded-lg p-4 flex items-center justify-between hover:bg-gray-800/60 transition-colors duration-200';
+                card.dataset.id = p.task_screen_name;
+                
+                card.innerHTML = `
+                    <div class="flex-1 min-w-0 mr-4">
+                        <p class="text-xs text-gray-400 truncate">${p.contest_title || 'コンテスト情報なし'}</p>
+                        <a href="https://atcoder.jp/contests/${p.contest_id}/tasks/${p.task_screen_name}" target="_blank" rel="noopener noreferrer" class="problem-title-link">
+                            <h3 class="problem-title font-bold text-lg text-sky-300 hover:text-sky-200 truncate ${count > 0 ? 'solved' : ''}">
+                                ${p.problem_index}: ${p.problem_title || 'タイトルなし'}
+                            </h3>
+                        </a>
+                    </div>
+                    <div class="flex items-center space-x-1 checkmark-container flex-shrink-0">
+                        ${generateCheckmarks(count)}
+                    </div>
+                `;
+                fragment.appendChild(card);
+            });
+            problemList.appendChild(fragment);
+            problemList.addEventListener('click', handleProblemClick); // 新しくリスナーを設定
+        }
+    </script>
+</body>
+</html>
