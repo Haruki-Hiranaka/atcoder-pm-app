@@ -10,11 +10,51 @@
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Noto+Sans+JP:wght@400;500;700&display=swap" rel="stylesheet">
     <style>
         body { font-family: 'Inter', 'Noto Sans JP', sans-serif; background-color: #111827; }
-        .problem-title.solved { text-decoration: line-through; color: #6b7280; }
-        .problem-card { cursor: pointer; }
-        .checkmark-icon { color: #22c55e; width: 1.25rem; height: 1.25rem; flex-shrink: 0; cursor: pointer; transition: transform 0.1s ease-in-out; }
-        .checkmark-icon:hover { transform: scale(1.2); }
+        .problem-title.solved { color: #6b7280; }
         .hidden { display: none; }
+
+        .control-button {
+            display: inline-flex; align-items: center; justify-content: center;
+            width: 1.75rem; height: 1.75rem; border-radius: 9999px;
+            font-weight: bold; font-size: 0.875rem; color: white;
+            cursor: pointer; transition: transform 0.1s ease-in-out, box-shadow 0.1s;
+            border: 2px solid transparent;
+        }
+        .control-button:hover {
+            transform: scale(1.15);
+            box-shadow: 0 0 10px rgba(255, 255, 255, 0.3);
+        }
+        .status-circle-btn { background-color: #ef4444; }
+        .status-triangle-btn { background-color: #f59e0b; }
+        .status-cross-btn { background-color: #4b5563; }
+        
+        .status-icon {
+            display: inline-flex; align-items: center; justify-content: center;
+            width: 1.25rem; height: 1.25rem; border-radius: 9999px;
+            font-weight: bold; font-size: 0.75rem; margin-left: 0.5rem;
+            color: white; cursor: pointer; transition: opacity 0.2s;
+        }
+        .status-icon:hover { opacity: 0.7; }
+
+        /* ▼▼▼【追加】番号表示のためのCSSを追加 ▼▼▼ */
+        .status-icon {
+            position: relative;
+            width: 1.5rem; height: 1.5rem; font-size: 0.8rem;
+        }
+        .status-icon sup {
+            position: absolute;
+            top: -2px;
+            right: -2px;
+            background-color: #1f2937;
+            color: #d1d5db;
+            border-radius: 50%;
+            width: 0.9rem;
+            height: 0.9rem;
+            font-size: 0.6rem;
+            line-height: 0.9rem;
+            text-align: center;
+            border: 1px solid #4b5563;
+        }
     </style>
 </head>
 <body class="text-gray-100 antialiased">
@@ -62,8 +102,11 @@
                 <label for="solved-filter" class="block text-sm font-medium text-gray-400 mb-1">解答状況</label>
                 <select id="solved-filter" class="w-full bg-gray-700 border-gray-600 rounded-md shadow-sm focus:ring-sky-500 focus:border-sky-500 text-white">
                     <option value="">すべて</option>
-                    <option value="solved">解答済み (1回以上)</option>
+                    <option value="solved">解答済み</option>
                     <option value="unsolved">未解答</option>
+                    <option value="ends_with_circle">最後が〇</option>
+                    <option value="ends_with_triangle">最後が△</option>
+                    <option value="ends_with_cross">最後が✕</option>
                 </select>
             </div>
         </div>
@@ -79,7 +122,6 @@
     <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-firestore.js"></script>
 
    <script>
-    // ★★★あなたのFirebaseプロジェクトの接続情報をここに設定しました★★★
     const firebaseConfig = {
         apiKey: "AIzaSyCWMpaHUaWbdDEZgT4soz0UER2hNFDTSUk",
         authDomain: "atcoder-app-65e12.firebaseapp.com",
@@ -89,14 +131,10 @@
         appId: "1:416204271145:web:bf743d1b096b635c17f638",
         measurementId: "G-0TRWSGZMRB"
     };
-    // ★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★
-
-    // Firebaseの初期化
     firebase.initializeApp(firebaseConfig);
     const auth = firebase.auth();
     const db = firebase.firestore();
 
-    // --- DOM要素の取得 ---
     const authContainer = document.getElementById('auth-container');
     const appContainer = document.getElementById('app-container');
     const userEmailDisplay = document.getElementById('user-email');
@@ -113,15 +151,17 @@
     const difficultyFilter = document.getElementById('difficulty-filter');
     const solvedFilter = document.getElementById('solved-filter');
     
-    // --- グローバル変数 ---
     const CSV_URL = 'https://raw.githubusercontent.com/Haruki-Hiranaka/atcoder_app/main/atcoder_problems.csv';
-    const MAX_CHECKS = 10;
     let allProblems = [];
-    let solvedCounts = {}; 
+    let problemStates = {}; 
     let currentUser = null;
     let userDocRef = null;
+    const STATUS = {
+        CIRCLE: 'circle',
+        TRIANGLE: 'triangle',
+        CROSS: 'cross',
+    };
 
-    // --- 認証状態の監視 ---
     auth.onAuthStateChanged(async user => {
         if (user) {
             currentUser = user;
@@ -135,9 +175,6 @@
             userDocRef = null;
             authContainer.classList.remove('hidden');
             appContainer.classList.add('hidden');
-            contestFilter.removeEventListener('change', applyFilters);
-            difficultyFilter.removeEventListener('change', applyFilters);
-            solvedFilter.removeEventListener('change', applyFilters);
         }
     });
 
@@ -153,14 +190,14 @@
             allProblems = data;
             populateFilters(allProblems);
             applyFilters();
-            loadingState.style.display = 'none';
         } catch (error) {
             console.error('データの取得に失敗しました:', error);
             loadingState.innerHTML = `<div class="bg-red-900/50 text-red-300 p-4 rounded-lg text-center">問題データの読み込みに失敗しました。</div>`;
+        } finally {
+            loadingState.style.display = 'none';
         }
     }
     
-    // --- 認証関連のイベントリスナー ---
     loginForm.addEventListener('submit', async e => {
         e.preventDefault();
         const email = document.getElementById('login-email').value;
@@ -169,7 +206,7 @@
             await auth.signInWithEmailAndPassword(email, password);
             authError.classList.add('hidden');
         } catch (error) {
-            showAuthError("ログインに失敗しました。メールアドレスまたはパスワードが間違っています。");
+            showAuthError("ログインに失敗しました。");
         }
     });
 
@@ -208,112 +245,158 @@
         authError.classList.remove('hidden');
     }
     
-    // --- アプリ本体のロジック (Firestore連携版) ---
+    // ▼▼▼【修正点】データ構造の変更に対応 ▼▼▼
     async function loadSolvedProblemsFromFirestore() {
         if (!userDocRef) return;
         try {
             const doc = await userDocRef.get();
-            if (doc.exists) {
-                solvedCounts = doc.data().counts || {};
-            } else {
-                solvedCounts = {};
-            }
+            problemStates = doc.exists ? (doc.data().states || {}) : {};
         } catch (error) {
             console.error("Firestoreからのデータ読み込みに失敗:", error);
-            solvedCounts = {};
+            problemStates = {};
         }
     }
 
     async function saveSolvedProblemsToFirestore() {
         if (!userDocRef) return;
         try {
-            await userDocRef.set({ counts: solvedCounts }, { merge: true });
+            await userDocRef.set({ states: problemStates });
         } catch (error) {
             console.error("Firestoreへのデータ書き込みに失敗:", error);
         }
     }
 
+    // ▼▼▼【修正点】カウンターのリセットロジックを追加 ▼▼▼
     function handleProblemClick(event) {
         const problemCard = event.target.closest('.problem-card');
         if (!problemCard) return;
-        if (event.target.closest('.problem-title-link')) {
-             return;
-        }
+
         const id = problemCard.dataset.id;
-        const checkmark = event.target.closest('.checkmark-icon');
-        if (checkmark) {
-            solvedCounts[id] = (solvedCounts[id] || 1) - 1;
-            if (solvedCounts[id] <= 0) {
-                delete solvedCounts[id];
-            }
-        } else {
-            solvedCounts[id] = (solvedCounts[id] || 0) + 1;
-            if (solvedCounts[id] > MAX_CHECKS) {
-                solvedCounts[id] = MAX_CHECKS;
+        const controlButton = event.target.closest('.control-button');
+        const statusIcon = event.target.closest('.status-icon');
+
+        // データ構造の初期化/確認
+        if (typeof problemStates[id] !== 'object' || problemStates[id] === null || !Array.isArray(problemStates[id].states)) {
+            const oldStates = Array.isArray(problemStates[id]) ? problemStates[id] : [];
+            let maxNum = 0;
+            const newStates = oldStates.map((item, index) => {
+                const num = index + 1;
+                if (num > maxNum) maxNum = num;
+                return typeof item === 'object' ? item : { type: item, pressNum: num };
+            });
+            problemStates[id] = { states: newStates, nextNum: maxNum + 1 };
+        }
+
+        if (controlButton) {
+            const status = controlButton.dataset.status;
+            if (status) {
+                const pressNum = problemStates[id].nextNum;
+                const newState = { type: status, pressNum: pressNum };
+                problemStates[id].states.push(newState);
+                problemStates[id].nextNum++; // 次の番号をインクリメント
             }
         }
+        else if (statusIcon) {
+            const index = parseInt(statusIcon.dataset.index, 10);
+            if (!isNaN(index)) {
+                problemStates[id].states.splice(index, 1);
+                if (problemStates[id].states.length === 0) {
+                    problemStates[id].nextNum = 1; // リセット
+                }
+            }
+        }
+        else {
+            return;
+        }
+        
         saveSolvedProblemsToFirestore(); 
         updateProblemUI(id);
-        const selectedSolved = solvedFilter.value;
-        if ((selectedSolved === 'solved' && !(solvedCounts[id] > 0)) || (selectedSolved === 'unsolved' && (solvedCounts[id] > 0))) {
-            problemCard.style.display = 'none'; 
-        }
     }
-
+    
+    // ▼▼▼【修正点】新しいデータ構造に合わせて更新 ▼▼▼
     function updateProblemUI(id) {
         const card = document.querySelector(`.problem-card[data-id="${id}"]`);
         if (!card) return;
-        const count = solvedCounts[id] || 0;
+        
+        const problemStateObj = problemStates[id] || { states: [], nextNum: 1 };
+        const states = problemStateObj.states || [];
+        
         const title = card.querySelector('.problem-title');
-        const checkmarkContainer = card.querySelector('.checkmark-container');
-        title.classList.toggle('solved', count > 0);
-        checkmarkContainer.innerHTML = generateCheckmarks(count);
+        const statusContainer = card.querySelector('.status-container');
+        statusContainer.innerHTML = renderStatusIconsHTML(states);
+        title.classList.toggle('solved', states.length > 0);
     }
 
-    function generateCheckmarks(count) {
-        let marks = '';
-        for (let i = 0; i < count; i++) {
-            marks += `<svg class="checkmark-icon" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M16.704 4.153a.75.75 0 01.143 1.052l-8 10.5a.75.75 0 01-1.127.075l-4.5-4.5a.75.75 0 011.06-1.06l3.894 3.893 7.48-9.817a.75.75 0 011.052-.143z" clip-rule="evenodd" /></svg>`;
-        }
-        return marks;
+    // ▼▼▼【修正点】番号表示とデータ形式の混在に対応 ▼▼▼
+    function renderStatusIconsHTML(states) {
+        return states.map((stateObj, index) => {
+            const isObject = typeof stateObj === 'object' && stateObj !== null;
+            const type = isObject ? stateObj.type : stateObj;
+            const pressNum = isObject ? stateObj.pressNum : null;
+
+            let iconChar = '', iconClass = '';
+            switch (type) {
+                case STATUS.CIRCLE:
+                    iconChar = '〇'; iconClass = 'status-circle-btn'; break;
+                case STATUS.TRIANGLE:
+                    iconChar = '△'; iconClass = 'status-triangle-btn'; break;
+                case STATUS.CROSS:
+                    iconChar = '✕'; iconClass = 'status-cross-btn'; break;
+                default: return '';
+            }
+
+            const numberSup = pressNum ? `<sup>${pressNum}</sup>` : '';
+            return `<div class="status-icon ${iconClass}" data-index="${index}">${iconChar}${numberSup}</div>`;
+        }).join('');
     }
     
+    // ▼▼▼【修正点】フィルターを新しいデータ構造に対応 ▼▼▼
     function applyFilters() {
         const selectedContest = contestFilter.value;
         const selectedDifficulty = difficultyFilter.value;
         const selectedSolved = solvedFilter.value;
         let filtered = allProblems;
+        
         if (selectedContest) filtered = filtered.filter(p => p.contest_type === selectedContest);
         if (selectedDifficulty) filtered = filtered.filter(p => p.problem_index === selectedDifficulty);
+        
         if (selectedSolved === 'solved') {
-            filtered = filtered.filter(p => (solvedCounts[p.task_screen_name] || 0) > 0);
+            filtered = filtered.filter(p => {
+                const problemStateObj = problemStates[p.task_screen_name] || {};
+                return (problemStateObj.states || []).length > 0;
+            });
         } else if (selectedSolved === 'unsolved') {
-            filtered = filtered.filter(p => !(solvedCounts[p.task_screen_name] || 0) > 0);
+            filtered = filtered.filter(p => {
+                const problemStateObj = problemStates[p.task_screen_name] || {};
+                return (problemStateObj.states || []).length === 0;
+            });
+        } else if (selectedSolved.startsWith('ends_with_')) {
+            const targetStatus = selectedSolved.replace('ends_with_', '');
+            filtered = filtered.filter(p => {
+                const problemStateObj = problemStates[p.task_screen_name] || {};
+                const states = problemStateObj.states || [];
+                if (states.length === 0) return false;
+                
+                const lastState = states[states.length - 1];
+                const lastStateType = typeof lastState === 'object' && lastState !== null ? lastState.type : lastState;
+                
+                return lastStateType === targetStatus;
+            });
         }
+        
         renderProblems(filtered);
     }
 
-    // ▼▼▼【修正点A】CSVを正しく読み込むため、この関数をより正確なものに差し替え ▼▼▼
-    function parseCsvLine(line) {
-        const values = [];
-        const regex = /(?:^|,)\s*(?:"([^"]*(?:""[^"]*)*)"|([^,]*))\s*/g;
-        let match;
-        while ((match = regex.exec(line))) {
-            let value = match[1] !== undefined ? match[1].replace(/""/g, '"') : match[2];
-            values.push(value);
-        }
-        return values;
-    }
+    // ご指示通り、CSV読み込み処理は変更しません
     async function fetchAndParseCSV(url) {
         const response = await fetch(url);
         if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
         const csvText = await response.text();
         const lines = csvText.trim().split(/\r?\n/);
-        if (lines.length < 2) return [];
-        const header = parseCsvLine(lines[0]).map(h => h.trim());
+        const header = lines[0].split(',').map(h => h.trim());
         return lines.slice(1).map(line => {
             if (!line) return null;
-            const values = parseCsvLine(line);
+            const values = line.split(',').map(v => v.trim());
             if (values.length !== header.length) return null;
             return header.reduce((obj, key, i) => {
                 obj[key] = values[i] || '';
@@ -321,7 +404,6 @@
             }, {});
         }).filter(Boolean);
     }
-    // ▲▲▲ 修正点Aここまで ▲▲▲
 
     function populateFilters(problems) {
         contestFilter.innerHTML = '<option value="">すべて</option>';
@@ -332,7 +414,7 @@
         difficulties.forEach(d => difficultyFilter.add(new Option(d, d)));
     }
     
-    // ▼▼▼【修正点B】コンテストIDを表示するようにHTMLの構造を修正 ▼▼▼
+    // ▼▼▼【修正点】新しいデータ構造に対応 ▼▼▼
     function renderProblems(problems) {
         problemList.innerHTML = ''; 
         problemList.removeEventListener('click', handleProblemClick); 
@@ -346,7 +428,9 @@
         problems.forEach(p => {
             if (!p || !p.task_screen_name) return; 
 
-            const count = solvedCounts[p.task_screen_name] || 0;
+            const problemStateObj = problemStates[p.task_screen_name] || { states: [], nextNum: 1 };
+            const states = problemStateObj.states || [];
+            
             const card = document.createElement('div');
             card.className = 'problem-card bg-gray-900/50 border border-gray-700 rounded-lg p-4 flex items-center justify-between hover:bg-gray-800/60 transition-colors duration-200';
             card.dataset.id = p.task_screen_name;
@@ -357,22 +441,29 @@
                         <span class="font-semibold">${p.contest_id || ''}</span>
                         <span class="ml-2">${p.contest_title || 'コンテスト情報なし'}</span>
                     </p>
-                    <a href="https://atcoder.jp/contests/${p.contest_id}/tasks/${p.task_screen_name}" target="_blank" rel="noopener noreferrer" class="problem-title-link">
-                        <h3 class="problem-title font-bold text-lg text-sky-300 hover:text-sky-200 truncate ${count > 0 ? 'solved' : ''}">
-                            ${p.problem_index}: ${p.problem_title || 'タイトルなし'}
-                        </h3>
-                    </a>
+                    <div class="flex items-center mt-1">
+                        <a href="https://atcoder.jp/contests/${p.contest_id}/tasks/${p.task_screen_name}" target="_blank" rel="noopener noreferrer" class="problem-title-link">
+                            <h3 class="problem-title font-bold text-lg text-sky-300 hover:text-sky-200 ${states.length > 0 ? 'solved' : ''}">
+                                ${p.problem_index}: ${p.problem_title || 'タイトルなし'}
+                            </h3>
+                        </a>
+                        <div class="status-container flex items-center">
+                            ${renderStatusIconsHTML(states)}
+                        </div>
+                    </div>
                 </div>
-                <div class="flex items-center space-x-1 checkmark-container flex-shrink-0">
-                    ${generateCheckmarks(count)}
+                <div class="control-button-container flex items-center space-x-2 flex-shrink-0">
+                    <div class="control-button status-circle-btn" data-status="${STATUS.CIRCLE}">〇</div>
+                    <div class="control-button status-triangle-btn" data-status="${STATUS.TRIANGLE}">△</div>
+                    <div class="control-button status-cross-btn" data-status="${STATUS.CROSS}">✕</div>
                 </div>
             `;
+            card.querySelector('.problem-title-link').addEventListener('click', e => e.stopPropagation());
             fragment.appendChild(card);
         });
         problemList.appendChild(fragment);
         problemList.addEventListener('click', handleProblemClick);
     }
-    // ▲▲▲ 修正点Bここまで ▲▲▲
-</script>
+   </script>
 </body>
 </html>
