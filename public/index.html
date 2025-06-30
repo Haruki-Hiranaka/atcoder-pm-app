@@ -29,18 +29,13 @@
         .status-cross-btn { background-color: #4b5563; }
         
         .status-icon {
+            position: relative;
             display: inline-flex; align-items: center; justify-content: center;
-            width: 1.25rem; height: 1.25rem; border-radius: 9999px;
-            font-weight: bold; font-size: 0.75rem; margin-left: 0.5rem;
+            width: 1.5rem; height: 1.5rem; border-radius: 9999px;
+            font-weight: bold; font-size: 0.8rem; margin-left: 0.5rem;
             color: white; cursor: pointer; transition: opacity 0.2s;
         }
         .status-icon:hover { opacity: 0.7; }
-
-        /* ▼▼▼【追加】番号表示のためのCSSを追加 ▼▼▼ */
-        .status-icon {
-            position: relative;
-            width: 1.5rem; height: 1.5rem; font-size: 0.8rem;
-        }
         .status-icon sup {
             position: absolute;
             top: -2px;
@@ -82,9 +77,14 @@
     
     <div id="app-container" class="container mx-auto p-4 md:p-8 max-w-4xl hidden">
         <header class="flex justify-between items-center mb-8">
-            <div>
-                <h1 class="text-4xl font-bold text-transparent bg-clip-text bg-gradient-to-r from-sky-400 to-cyan-300">AtCoder PM</h1>
-                <p id="user-email" class="text-gray-400 mt-2 text-sm"></p>
+            <div class="flex items-center gap-4">
+                <button id="ranking-button" class="p-2 rounded-md hover:bg-gray-700 transition-colors">
+                    <svg class="w-6 h-6 text-gray-300" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16"></path></svg>
+                </button>
+                <div>
+                    <h1 class="text-4xl font-bold text-transparent bg-clip-text bg-gradient-to-r from-sky-400 to-cyan-300">AtCoder PM</h1>
+                    <p id="user-email" class="text-gray-400 mt-2 text-sm"></p>
+                </div>
             </div>
             <button id="logout-button" class="bg-gray-700 hover:bg-gray-600 text-white font-bold py-2 px-4 rounded-md transition duration-200">ログアウト</button>
         </header>
@@ -117,9 +117,35 @@
         </div>
     </div>
 
+    <div id="ranking-panel-container" class="fixed inset-0 bg-black bg-opacity-70 z-40 hidden">
+        <div id="ranking-panel" class="absolute top-0 left-0 h-full w-full max-w-md bg-gray-900 shadow-lg p-6 transform -translate-x-full transition-transform duration-300 ease-in-out">
+            <div class="flex justify-between items-center mb-6">
+                <h2 id="panel-title" class="text-2xl font-bold text-sky-300">メニュー</h2>
+                <button id="ranking-close-button" class="p-2 rounded-md hover:bg-gray-700">
+                    <svg class="w-6 h-6 text-gray-300" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg>
+                </button>
+            </div>
+            
+            <div id="panel-content" class="overflow-y-auto" style="height: calc(100vh - 100px);">
+                <div id="main-menu-view">
+                    <ul class="space-y-2">
+                        <li>
+                            <a href="#" id="show-ranking-link" class="block p-3 rounded-md hover:bg-gray-700 transition-colors text-lg">ランキング</a>
+                        </li>
+                    </ul>
+                </div>
+                <div id="ranking-view" class="hidden">
+                    <button id="back-to-menu-button" class="mb-4 text-sm text-sky-400 hover:underline">&lt; メニューに戻る</button>
+                    <div id="ranking-list" class="space-y-3"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
     <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-auth.js"></script>
     <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-firestore.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-functions.js"></script>
 
    <script>
     const firebaseConfig = {
@@ -150,6 +176,16 @@
     const contestFilter = document.getElementById('contest-filter');
     const difficultyFilter = document.getElementById('difficulty-filter');
     const solvedFilter = document.getElementById('solved-filter');
+    const rankingButton = document.getElementById('ranking-button');
+    const rankingPanelContainer = document.getElementById('ranking-panel-container');
+    const rankingPanel = document.getElementById('ranking-panel');
+    const rankingCloseButton = document.getElementById('ranking-close-button');
+    const rankingList = document.getElementById('ranking-list');
+    const panelTitle = document.getElementById('panel-title');
+    const mainMenuView = document.getElementById('main-menu-view');
+    const rankingView = document.getElementById('ranking-view');
+    const showRankingLink = document.getElementById('show-ranking-link');
+    const backToMenuButton = document.getElementById('back-to-menu-button');
     
     const CSV_URL = 'https://raw.githubusercontent.com/Haruki-Hiranaka/atcoder_app/main/atcoder_problems.csv';
     let allProblems = [];
@@ -205,9 +241,7 @@
         try {
             await auth.signInWithEmailAndPassword(email, password);
             authError.classList.add('hidden');
-        } catch (error) {
-            showAuthError("ログインに失敗しました。");
-        }
+        } catch (error) { showAuthError("ログインに失敗しました。"); }
     });
 
     registerForm.addEventListener('submit', async e => {
@@ -217,9 +251,7 @@
         try {
             await auth.createUserWithEmailAndPassword(email, password);
             authError.classList.add('hidden');
-        } catch (error) {
-            showAuthError("登録に失敗しました。" + error.message);
-        }
+        } catch (error) { showAuthError("登録に失敗しました。" + error.message); }
     });
 
     logoutButton.addEventListener('click', () => { auth.signOut(); });
@@ -245,7 +277,6 @@
         authError.classList.remove('hidden');
     }
     
-    // ▼▼▼【修正点】データ構造の変更に対応 ▼▼▼
     async function loadSolvedProblemsFromFirestore() {
         if (!userDocRef) return;
         try {
@@ -266,7 +297,6 @@
         }
     }
 
-    // ▼▼▼【修正点】カウンターのリセットロジックを追加 ▼▼▼
     function handleProblemClick(event) {
         const problemCard = event.target.closest('.problem-card');
         if (!problemCard) return;
@@ -275,7 +305,6 @@
         const controlButton = event.target.closest('.control-button');
         const statusIcon = event.target.closest('.status-icon');
 
-        // データ構造の初期化/確認
         if (typeof problemStates[id] !== 'object' || problemStates[id] === null || !Array.isArray(problemStates[id].states)) {
             const oldStates = Array.isArray(problemStates[id]) ? problemStates[id] : [];
             let maxNum = 0;
@@ -293,7 +322,7 @@
                 const pressNum = problemStates[id].nextNum;
                 const newState = { type: status, pressNum: pressNum };
                 problemStates[id].states.push(newState);
-                problemStates[id].nextNum++; // 次の番号をインクリメント
+                problemStates[id].nextNum++;
             }
         }
         else if (statusIcon) {
@@ -301,56 +330,44 @@
             if (!isNaN(index)) {
                 problemStates[id].states.splice(index, 1);
                 if (problemStates[id].states.length === 0) {
-                    problemStates[id].nextNum = 1; // リセット
+                    problemStates[id].nextNum = 1;
                 }
             }
         }
-        else {
-            return;
-        }
+        else { return; }
         
         saveSolvedProblemsToFirestore(); 
         updateProblemUI(id);
     }
-    
-    // ▼▼▼【修正点】新しいデータ構造に合わせて更新 ▼▼▼
+
     function updateProblemUI(id) {
         const card = document.querySelector(`.problem-card[data-id="${id}"]`);
         if (!card) return;
-        
         const problemStateObj = problemStates[id] || { states: [], nextNum: 1 };
         const states = problemStateObj.states || [];
-        
         const title = card.querySelector('.problem-title');
         const statusContainer = card.querySelector('.status-container');
         statusContainer.innerHTML = renderStatusIconsHTML(states);
         title.classList.toggle('solved', states.length > 0);
     }
 
-    // ▼▼▼【修正点】番号表示とデータ形式の混在に対応 ▼▼▼
     function renderStatusIconsHTML(states) {
         return states.map((stateObj, index) => {
             const isObject = typeof stateObj === 'object' && stateObj !== null;
             const type = isObject ? stateObj.type : stateObj;
             const pressNum = isObject ? stateObj.pressNum : null;
-
             let iconChar = '', iconClass = '';
             switch (type) {
-                case STATUS.CIRCLE:
-                    iconChar = '〇'; iconClass = 'status-circle-btn'; break;
-                case STATUS.TRIANGLE:
-                    iconChar = '△'; iconClass = 'status-triangle-btn'; break;
-                case STATUS.CROSS:
-                    iconChar = '✕'; iconClass = 'status-cross-btn'; break;
+                case STATUS.CIRCLE: iconChar = '〇'; iconClass = 'status-circle-btn'; break;
+                case STATUS.TRIANGLE: iconChar = '△'; iconClass = 'status-triangle-btn'; break;
+                case STATUS.CROSS: iconChar = '✕'; iconClass = 'status-cross-btn'; break;
                 default: return '';
             }
-
             const numberSup = pressNum ? `<sup>${pressNum}</sup>` : '';
             return `<div class="status-icon ${iconClass}" data-index="${index}">${iconChar}${numberSup}</div>`;
         }).join('');
     }
     
-    // ▼▼▼【修正点】フィルターを新しいデータ構造に対応 ▼▼▼
     function applyFilters() {
         const selectedContest = contestFilter.value;
         const selectedDifficulty = difficultyFilter.value;
@@ -376,10 +393,8 @@
                 const problemStateObj = problemStates[p.task_screen_name] || {};
                 const states = problemStateObj.states || [];
                 if (states.length === 0) return false;
-                
                 const lastState = states[states.length - 1];
                 const lastStateType = typeof lastState === 'object' && lastState !== null ? lastState.type : lastState;
-                
                 return lastStateType === targetStatus;
             });
         }
@@ -387,7 +402,6 @@
         renderProblems(filtered);
     }
 
-    // ご指示通り、CSV読み込み処理は変更しません
     async function fetchAndParseCSV(url) {
         const response = await fetch(url);
         if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
@@ -414,7 +428,6 @@
         difficulties.forEach(d => difficultyFilter.add(new Option(d, d)));
     }
     
-    // ▼▼▼【修正点】新しいデータ構造に対応 ▼▼▼
     function renderProblems(problems) {
         problemList.innerHTML = ''; 
         problemList.removeEventListener('click', handleProblemClick); 
@@ -427,10 +440,8 @@
         const fragment = document.createDocumentFragment();
         problems.forEach(p => {
             if (!p || !p.task_screen_name) return; 
-
             const problemStateObj = problemStates[p.task_screen_name] || { states: [], nextNum: 1 };
             const states = problemStateObj.states || [];
-            
             const card = document.createElement('div');
             card.className = 'problem-card bg-gray-900/50 border border-gray-700 rounded-lg p-4 flex items-center justify-between hover:bg-gray-800/60 transition-colors duration-200';
             card.dataset.id = p.task_screen_name;
@@ -439,7 +450,7 @@
                 <div class="flex-1 min-w-0 mr-4">
                     <p class="text-xs text-gray-400 truncate">
                         <span class="font-semibold">${p.contest_id || ''}</span>
-                        <span class="ml-2">${p.contest_title || 'コンテスト情報なし'}</span>
+                        <span class="ml-2">${p.contest_title || ''}</span>
                     </p>
                     <div class="flex items-center mt-1">
                         <a href="https://atcoder.jp/contests/${p.contest_id}/tasks/${p.task_screen_name}" target="_blank" rel="noopener noreferrer" class="problem-title-link">
@@ -464,6 +475,79 @@
         problemList.appendChild(fragment);
         problemList.addEventListener('click', handleProblemClick);
     }
+
+    async function loadAndDisplayRanking() {
+        rankingList.innerHTML = '<p class="text-gray-500">最新のランキングを計算＆読み込み中...</p>';
+        try {
+            const functions = firebase.functions();
+            const refreshRanking = functions.httpsCallable('refreshRanking');
+            await refreshRanking();
+            
+            const rankingDoc = await db.collection('rankings').doc('leaderboard').get();
+            if (rankingDoc.exists) {
+                const rankingData = rankingDoc.data().users || [];
+                if (rankingData.length > 0) {
+                    rankingList.innerHTML = `
+                        <ol class="list-decimal list-inside space-y-2">
+                            ${rankingData.map((user, index) => `
+                                <li class="p-2 rounded-md ${index === 0 ? 'bg-amber-500/20' : (index === 1 ? 'bg-slate-400/20' : (index === 2 ? 'bg-amber-800/20' : 'bg-gray-800/50'))}">
+                                    <span class="font-bold text-lg">${user.email}</span>
+                                    <span class="float-right text-sky-300">${(user.score || 0).toLocaleString()} pt</span>
+                                </li>
+                            `).join('')}
+                        </ol>
+                    `;
+                } else {
+                    rankingList.innerHTML = '<p class="text-gray-500">まだランキングデータがありません。</p>';
+                }
+            } else {
+                rankingList.innerHTML = '<p class="text-gray-500">ランキングデータがまだ生成されていません。しばらく待ってから再度お試しください。</p>';
+            }
+        } catch (error) {
+            console.error("ランキングの更新・表示に失敗しました:", error);
+            rankingList.innerHTML = '<p class="text-red-400">ランキングの取得に失敗しました。</p>';
+        }
+    }
+
+    const closePanel = () => {
+        rankingPanel.classList.add('-translate-x-full');
+        setTimeout(() => {
+            rankingPanelContainer.classList.add('hidden');
+            rankingView.classList.add('hidden');
+            mainMenuView.classList.remove('hidden');
+            panelTitle.textContent = 'メニュー';
+        }, 300);
+    };
+
+    rankingButton.addEventListener('click', () => {
+        rankingPanelContainer.classList.remove('hidden');
+        setTimeout(() => {
+            rankingPanel.classList.remove('-translate-x-full');
+        }, 10);
+    });
+
+    rankingCloseButton.addEventListener('click', closePanel);
+
+    rankingPanelContainer.addEventListener('click', (event) => {
+        if (event.target === rankingPanelContainer) {
+            closePanel();
+        }
+    });
+
+    showRankingLink.addEventListener('click', (e) => {
+        e.preventDefault();
+        mainMenuView.classList.add('hidden');
+        rankingView.classList.remove('hidden');
+        panelTitle.textContent = 'ランキング';
+        loadAndDisplayRanking();
+    });
+
+    backToMenuButton.addEventListener('click', (e) => {
+        e.preventDefault();
+        rankingView.classList.add('hidden');
+        mainMenuView.classList.remove('hidden');
+        panelTitle.textContent = 'メニュー';
+    });
    </script>
 </body>
 </html>
