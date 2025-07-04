@@ -50,6 +50,18 @@
             text-align: center;
             border: 1px solid #4b5563;
         }
+        .comment-button {
+            cursor: pointer;
+            color: #6b7280; /* gray-500 */
+            transition: color 0.2s, transform 0.2s;
+        }
+        .comment-button:hover {
+            color: #9ca3af; /* gray-400 */
+            transform: scale(1.1);
+        }
+        .comment-button.has-comment {
+            color: #38bdf8; /* sky-400 */
+        }
     </style>
 </head>
 <body class="text-gray-100 antialiased">
@@ -142,6 +154,17 @@
         </div>
     </div>
 
+    <div id="comment-modal-container" class="fixed inset-0 bg-black bg-opacity-70 z-50 hidden flex items-center justify-center">
+        <div class="bg-gray-800 rounded-lg shadow-xl p-6 w-full max-w-lg">
+            <h2 id="comment-modal-title" class="text-xl font-bold text-sky-300 mb-4">コメントを編集</h2>
+            <textarea id="comment-textarea" class="w-full h-40 bg-gray-700 p-3 rounded-md border border-gray-600 focus:ring-sky-500 focus:border-sky-500 text-white" placeholder="コメントを入力..."></textarea>
+            <div class="mt-4 flex justify-end gap-4">
+                <button id="comment-cancel-button" class="bg-gray-600 hover:bg-gray-500 text-white font-bold py-2 px-4 rounded-md transition duration-200">キャンセル</button>
+                <button id="comment-save-button" class="bg-sky-600 hover:bg-sky-500 text-white font-bold py-2 px-4 rounded-md transition duration-200">保存</button>
+            </div>
+        </div>
+    </div>
+
     <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
     <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-auth.js"></script>
     <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-firestore.js"></script>
@@ -186,6 +209,11 @@
     const rankingView = document.getElementById('ranking-view');
     const showRankingLink = document.getElementById('show-ranking-link');
     const backToMenuButton = document.getElementById('back-to-menu-button');
+    const commentModalContainer = document.getElementById('comment-modal-container');
+    const commentModalTitle = document.getElementById('comment-modal-title');
+    const commentTextarea = document.getElementById('comment-textarea');
+    const commentSaveButton = document.getElementById('comment-save-button');
+    const commentCancelButton = document.getElementById('comment-cancel-button');
     
     const CSV_URL = 'https://raw.githubusercontent.com/Haruki-Hiranaka/atcoder_app/main/atcoder_problems.csv';
     let allProblems = [];
@@ -304,6 +332,7 @@
         const id = problemCard.dataset.id;
         const controlButton = event.target.closest('.control-button');
         const statusIcon = event.target.closest('.status-icon');
+        const commentButton = event.target.closest('.comment-button');
 
         if (typeof problemStates[id] !== 'object' || problemStates[id] === null || !Array.isArray(problemStates[id].states)) {
             const oldStates = Array.isArray(problemStates[id]) ? problemStates[id] : [];
@@ -313,7 +342,7 @@
                 if (num > maxNum) maxNum = num;
                 return typeof item === 'object' ? item : { type: item, pressNum: num };
             });
-            problemStates[id] = { states: newStates, nextNum: maxNum + 1 };
+            problemStates[id] = { states: newStates, nextNum: maxNum + 1, comment: '' };
         }
 
         if (controlButton) {
@@ -334,7 +363,13 @@
                 }
             }
         }
-        else { return; }
+        else if (commentButton) {
+            openCommentModal(id);
+            return; 
+        }
+        else {
+            return;
+        }
         
         saveSolvedProblemsToFirestore(); 
         updateProblemUI(id);
@@ -343,12 +378,18 @@
     function updateProblemUI(id) {
         const card = document.querySelector(`.problem-card[data-id="${id}"]`);
         if (!card) return;
-        const problemStateObj = problemStates[id] || { states: [], nextNum: 1 };
+        const problemStateObj = problemStates[id] || { states: [], nextNum: 1, comment: '' };
         const states = problemStateObj.states || [];
         const title = card.querySelector('.problem-title');
         const statusContainer = card.querySelector('.status-container');
+        const commentButton = card.querySelector('.comment-button');
+
         statusContainer.innerHTML = renderStatusIconsHTML(states);
         title.classList.toggle('solved', states.length > 0);
+
+        if(commentButton) {
+            commentButton.classList.toggle('has-comment', !!problemStateObj.comment);
+        }
     }
 
     function renderStatusIconsHTML(states) {
@@ -440,26 +481,32 @@
         const fragment = document.createDocumentFragment();
         problems.forEach(p => {
             if (!p || !p.task_screen_name) return; 
-            const problemStateObj = problemStates[p.task_screen_name] || { states: [], nextNum: 1 };
+            const problemStateObj = problemStates[p.task_screen_name] || { states: [], nextNum: 1, comment: '' };
             const states = problemStateObj.states || [];
+            
             const card = document.createElement('div');
-            card.className = 'problem-card bg-gray-900/50 border border-gray-700 rounded-lg p-4 flex items-center justify-between hover:bg-gray-800/60 transition-colors duration-200';
+            card.className = 'problem-card bg-gray-900/50 border border-gray-700 rounded-lg p-4 flex items-center justify-between';
             card.dataset.id = p.task_screen_name;
             
             card.innerHTML = `
-                <div class="flex-1 min-w-0 mr-4">
-                    <p class="text-xs text-gray-400 truncate">
-                        <span class="font-semibold">${p.contest_id || ''}</span>
-                        <span class="ml-2">${p.contest_title || ''}</span>
-                    </p>
-                    <div class="flex items-center mt-1">
-                        <a href="https://atcoder.jp/contests/${p.contest_id}/tasks/${p.task_screen_name}" target="_blank" rel="noopener noreferrer" class="problem-title-link">
-                            <h3 class="problem-title font-bold text-lg text-sky-300 hover:text-sky-200 ${states.length > 0 ? 'solved' : ''}">
-                                ${p.problem_index}: ${p.problem_title || 'タイトルなし'}
-                            </h3>
-                        </a>
-                        <div class="status-container flex items-center">
-                            ${renderStatusIconsHTML(states)}
+                <div class="flex items-center flex-1 min-w-0 mr-4">
+                    <button class="comment-button ${problemStateObj.comment ? 'has-comment' : ''} mr-4 flex-shrink-0">
+                        <svg class="w-6 h-6" fill="currentColor" viewBox="0 0 20 20" xmlns="http://www.w3.org/2000/svg"><path fill-rule="evenodd" d="M18 10c0 3.866-3.582 7-8 7a8.841 8.841 0 01-4.083-.98L2 17l1.08-3.242A8.995 8.995 0 012 10c0-3.866 3.582-7 8-7s8 3.134 8 7zM4.707 11.293a1 1 0 00-1.414 1.414l3 3a1 1 0 001.414 0l3-3a1 1 0 00-1.414-1.414L9 12.586V7a1 1 0 10-2 0v5.586l-2.293-2.293z" clip-rule="evenodd"></path></svg>
+                    </button>
+                    <div class="flex-1 min-w-0">
+                        <p class="text-xs text-gray-400 truncate">
+                            <span class="font-semibold">${p.contest_id || ''}</span>
+                            <span class="ml-2">${p.contest_title || ''}</span>
+                        </p>
+                        <div class="flex items-center mt-1">
+                            <a href="https://atcoder.jp/contests/${p.contest_id}/tasks/${p.task_screen_name}" target="_blank" rel="noopener noreferrer" class="problem-title-link">
+                                <h3 class="problem-title font-bold text-lg text-sky-300 hover:text-sky-200 ${states.length > 0 ? 'solved' : ''}">
+                                    ${p.problem_index}: ${p.problem_title || 'タイトルなし'}
+                                </h3>
+                            </a>
+                            <div class="status-container flex items-center">
+                                ${renderStatusIconsHTML(states)}
+                            </div>
                         </div>
                     </div>
                 </div>
@@ -547,6 +594,45 @@
         rankingView.classList.add('hidden');
         mainMenuView.classList.remove('hidden');
         panelTitle.textContent = 'メニュー';
+    });
+
+    function openCommentModal(problemId) {
+        const problem = allProblems.find(p => p.task_screen_name === problemId);
+        if (!problem) return;
+
+        const problemStateObj = problemStates[problemId] || { states: [], nextNum: 1, comment: '' };
+        
+        commentModalTitle.textContent = `${problem.problem_index}: ${problem.problem_title} - コメント`;
+        commentTextarea.value = problemStateObj.comment || '';
+        commentModalContainer.dataset.problemId = problemId;
+        commentModalContainer.classList.remove('hidden');
+    }
+
+    function closeCommentModal() {
+        commentModalContainer.classList.add('hidden');
+        delete commentModalContainer.dataset.problemId;
+    }
+
+    commentSaveButton.addEventListener('click', () => {
+        const problemId = commentModalContainer.dataset.problemId;
+        if (!problemId) return;
+
+        if (typeof problemStates[problemId] !== 'object' || problemStates[problemId] === null) {
+             problemStates[problemId] = { states: [], nextNum: 1, comment: '' };
+        }
+        
+        problemStates[problemId].comment = commentTextarea.value;
+        
+        saveSolvedProblemsToFirestore();
+        updateProblemUI(problemId);
+        closeCommentModal();
+    });
+
+    commentCancelButton.addEventListener('click', closeCommentModal);
+    commentModalContainer.addEventListener('click', (event) => {
+        if (event.target === commentModalContainer) {
+            closeCommentModal();
+        }
     });
    </script>
 </body>
