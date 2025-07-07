@@ -140,9 +140,15 @@
             
             <div id="panel-content" class="overflow-y-auto" style="height: calc(100vh - 100px);">
                 <div id="main-menu-view">
-                    <ul class="space-y-2">
+                    <ul class="space-y-2 divide-y divide-gray-700">
                         <li>
-                            <a href="#" id="show-ranking-link" class="block p-3 rounded-md hover:bg-gray-700 transition-colors text-lg">ランキング</a>
+                            <a href="#" id="show-ranking-link" class="block p-3 hover:bg-gray-700 transition-colors text-lg">ランキング</a>
+                        </li>
+                        <li class="pt-2">
+                            <a href="https://atcoder.jp/contests/APG4b" target="_blank" rel="noopener noreferrer" class="block p-3 hover:bg-gray-700 transition-colors text-lg">APG4b</a>
+                        </li>
+                        <li>
+                            <a href="https://atcoder.jp/contests/APG4bPython" target="_blank" rel="noopener noreferrer" class="block p-3 hover:bg-gray-700 transition-colors text-lg">APG4bPython</a>
                         </li>
                     </ul>
                 </div>
@@ -602,7 +608,7 @@
 
         const problemStateObj = problemStates[problemId] || { states: [], nextNum: 1, comment: '' };
         
-        commentModalTitle.textContent = `${problem.problem_index}: ${problem.problem_title} - コメント`;
+        commentModalTitle.textContent = `${problem.problem_index}: ${problem.problem_title || 'タイトルなし'} - コメント`;
         commentTextarea.value = problemStateObj.comment || '';
         commentModalContainer.dataset.problemId = problemId;
         commentModalContainer.classList.remove('hidden');
